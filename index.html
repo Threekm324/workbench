@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#EFF1F4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="双轨工作台">
+<title>双轨学习工作台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect x='6' y='9' width='18' height='13' rx='2.5' fill='%23171A20'/%3E%3Ccircle cx='15' cy='15.5' r='3.2' fill='%23EFF1F4'/%3E%3C/svg%3E">
+<!--
+DIRECTION CONTRACT — PCB·FPGA 双轨学习工作台
+THESIS: 一份把"PCB 轨 + FPGA/IC 轨 + 复旦考研主线 + 时间阶段"一一对应的执行驾驶舱；拒绝通用任务软件的通用列表，首屏即呈现"今天做什么 + 正在提升什么"。
+OWN-WORLD: 冷灰台面 #EFF1F4、白卡片、铜色 #C4551C（PCB 轨）与深青 #0F766E（IC 轨）双轨道色贯穿进度与标记；等宽字体只用于时长与数字；全部图标为同一种 1.5px 描边手绘 SVG。
+STORY: 用户每天打开 → 顶栏时间轴自动定位当前阶段 → 今日任务卡给出当日清单与时长 → 双轨面板逐项打卡 → 右侧能力图谱实时反馈"这些任务在喂哪些能力"；大三起考研主线接管节奏，双轨降级为保温与谈资积累。
+FIRST VIEWPORT: 顶栏（名称+总进度环）→ 九阶段时间轴 chips（带进度）→ 主栅格左列顺序：课内路线学期卡 → 考研·课内事务 → 今日任务 → PCB/IC 双轨面板 → 验收标准；右列能力图谱与资源。
+FORM: 个人仪表盘（Operate），紧凑布局，chips 直排；主行动 = 勾选打卡。
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<style>
+  :root {
+    --ground:#EFF1F4; --panel:#FFFFFF;     --ink:#171A20; --ink-2:#454C59; --ink-3:#5C6474;
+    --line:#DCE0E7; --line-2:#EDEFF3;
+    --pcb:#C4551C; --pcb-bg:#FBF0E6; --pcb-soft:#F7E4D3;
+    --ic:#0F766E; --ic-bg:#E9F3F1; --ic-soft:#D8E9E6;
+    --focus:#0F766E; --sel-bg:#D8E9E6;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+    --r-lg:14px; --r-md:10px; --r-sm:6px;
+    --shadow:0 1px 2px rgba(23,26,32,.05),0 6px 18px rgba(23,26,32,.06);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { scrollbar-color:#C4C9D2 var(--ground); }
+  body {
+    background:var(--ground); color:var(--ink); font-family:var(--sans);
+    font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
+  }
+  ::selection { background:var(--sel-bg); }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#C4C9D2; border-radius:5px; border:2px solid var(--ground); }
+  ::-webkit-scrollbar-track { background:transparent; }
+  a { color:var(--ink); text-decoration-color:var(--line); text-underline-offset:3px; }
+  a:hover { text-decoration-color:var(--focus); color:var(--focus); }
+  :focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:4px; }
+  .wrap { max-width:1380px; margin:0 auto; padding:0 24px 64px; }
+
+  /* ---------- top bar ---------- */
+  header {
+    position:sticky; top:0; z-index:50; background:rgba(239,241,244,.92);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar { max-width:1380px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:18px; }
+  .brand { display:flex; align-items:center; gap:11px; min-width:0; }
+  .brand svg { flex:none; }
+  .brand h1 { font-size:18px; font-weight:800; letter-spacing:.01em; white-space:nowrap; }
+  .brand .sub { font-size:12px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .bar-right { margin-left:auto; display:flex; align-items:center; gap:16px; }
+  .today-date { font-family:var(--mono); font-size:12.5px; color:var(--ink-2); white-space:nowrap; }
+  .total { display:flex; align-items:center; gap:10px; white-space:nowrap; }
+  .total .nums { text-align:right; }
+  .total .pct { font-family:var(--mono); font-size:16px; font-weight:700; line-height:1; }
+  .total .lbl { font-size:11px; color:var(--ink-3); }
+
+  /* ---------- timeline ---------- */
+  .timeline { display:flex; gap:10px; overflow-x:auto; padding:16px 24px 4px; scrollbar-width:thin; }
+  .chip {
+    flex:none; display:flex; flex-direction:column; gap:7px; min-width:148px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-md);
+    padding:10px 13px 9px; cursor:pointer; text-align:left; font-family:inherit; font-size:12px;
+    transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .chip:hover { border-color:#B7BEC9; transform:translateY(-1px); }
+  .chip .nm { font-weight:700; font-size:12.5px; letter-spacing:.01em; }
+  .chip .rg { font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
+  .chip .pb { height:4px; border-radius:2px; background:var(--line-2); overflow:hidden; }
+  .chip .pb i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--pcb),var(--ic)); border-radius:2px; }
+  .chip.cur { background:var(--ink); border-color:var(--ink); }
+  .chip.cur .nm { color:#fff; }
+  .chip.cur .rg { color:#AEB4BF; }
+  .chip.cur .pb { background:rgba(255,255,255,.14); }
+  .chip.cur .pb i { background:linear-gradient(90deg,#E08B5A,var(--ic)); }
+  .chip .pctl { display:flex; justify-content:space-between; font-size:10.5px; color:var(--ink-3); }
+  .chip.cur .pctl { color:#AEB4BF; }
+  .chip .pctl b { font-family:var(--mono); font-weight:600; }
+
+  /* ---------- layout ---------- */
+  .grid { display:grid; grid-template-columns:minmax(0,1fr) 352px; gap:18px; margin-top:18px; align-items:start; }
+  .col { display:flex; flex-direction:column; gap:18px; min-width:0; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow); overflow:hidden; }
+  .panel > .ph { padding:14px 18px 0; }
+  .panel > .pb { padding:12px 18px 18px; }
+  .ph h2 { font-size:16px; font-weight:800; letter-spacing:.01em; }
+  .ph .phsub { font-size:12px; color:var(--ink-3); margin-top:2px; }
+
+  /* today */
+  .today .ph { display:flex; align-items:baseline; gap:10px; }
+  .today .sum { margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--ink-2); white-space:nowrap; }
+  .t-grp { padding:8px 0 2px; }
+  .t-grp + .t-grp { border-top:1px dashed var(--line); margin-top:10px; padding-top:13px; }
+  .g-t { font-size:11px; font-weight:700; color:var(--ink-3); letter-spacing:.06em; margin-bottom:3px; }
+  .t-item { display:flex; gap:11px; padding:9px 0; border-top:1px solid var(--line-2); align-items:flex-start; }
+  .t-item:first-of-type { border-top:none; }
+  .t-item .tt { font-weight:600; font-size:14px; }
+  .t-item .tm { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:1px; }
+  .t-item .tags { margin-top:5px; }
+
+  /* checkbox tasks */
+  .task { display:flex; gap:11px; padding:10px 0; border-top:1px solid var(--line-2); align-items:flex-start; }
+  .task:first-of-type { border-top:none; }
+  .ck { flex:none; margin-top:1px; }
+  .ck input { position:absolute; opacity:0; pointer-events:none; }
+  .ck .box {
+    display:inline-flex; width:19px; height:19px; border:1.5px solid #B9C0CA; border-radius:5px;
+    align-items:center; justify-content:center; cursor:pointer; background:#fff;
+    transition:all .16s ease; color:transparent;
+  }
+  .ck input:focus-visible + .box { outline:2px solid var(--focus); outline-offset:2px; }
+  .ck input:checked + .box { background:var(--ink); border-color:var(--ink); color:#fff; }
+  .task[data-track="pcb"] .ck input:checked + .box { background:var(--pcb); border-color:var(--pcb); }
+  .task[data-track="ic"] .ck input:checked + .box { background:var(--ic); border-color:var(--ic); }
+  .ck .box svg { width:12px; height:12px; }
+  .t-body { min-width:0; flex:1; }
+  .t-body .tt { font-weight:600; font-size:14px; }
+  .t-body .tt.on { text-decoration:line-through; color:var(--ink-3); text-decoration-color:#B7BEC9; }
+  .t-body .tm { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:2px; }
+  .tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+  .tag { font-size:11px; color:var(--ink-2); background:var(--line-2); border-radius:999px; padding:2px 9px; font-weight:500; }
+  .tag.pcb { background:var(--pcb-soft); color:#8A3A12; }
+  .tag.ic { background:var(--ic-soft); color:#0A5A54; }
+
+  /* collapsible per-task guidance */
+  .t-more { margin-top:7px; }
+  .t-more > summary {
+    list-style:none; cursor:pointer; user-select:none;
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11.5px; font-weight:600; color:var(--ink-3);
+    border-radius:5px; transition:color .15s ease;
+  }
+  .t-more > summary::-webkit-details-marker { display:none; }
+  .t-more > summary:hover { color:var(--focus); }
+  .t-more[open] > summary { color:var(--focus); }
+  .t-more .chev { width:9px; height:9px; transition:transform .18s ease; }
+  .t-more[open] .chev { transform:rotate(180deg); }
+  .more-body {
+    margin:8px 0 2px; background:#F6F8FA; border:1px solid var(--line-2);
+    border-radius:8px; padding:10px 12px 11px;
+  }
+  .more-body .md { font-size:12.5px; color:var(--ink-2); line-height:1.65; white-space:pre-line; }
+  .more-body .ml { list-style:none; margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:4px; }
+  .more-body .ml a { font-size:12px; font-weight:600; }
+  .more-body .ml .rk { font-size:11px; color:var(--ink-3); margin-left:7px; }
+
+  /* dual track panels */
+  .tracks { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .track { background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow); overflow:hidden; }
+  .track.pcb { border-top:3px solid var(--pcb); }
+  .track.ic { border-top:3px solid var(--ic); }
+  .track > .ph { padding:14px 18px 0; display:flex; align-items:baseline; gap:10px; }
+  .track > .pb { padding:6px 18px 16px; }
+  .track h2 { font-size:16px; font-weight:800; }
+  .track .prog { margin-left:auto; font-family:var(--mono); font-size:11.5px; color:var(--ink-2); white-space:nowrap; }
+  .tbar { height:4px; border-radius:2px; background:var(--line-2); overflow:hidden; margin:10px 18px 0; }
+  .tbar i { display:block; height:100%; width:100%; transform:scaleX(0); transform-origin:left; border-radius:2px; transition:transform .4s cubic-bezier(.22,1,.36,1); }
+  .track.pcb .tbar i { background:var(--pcb); }
+  .track.ic .tbar i { background:var(--ic); }
+
+  /* common strip */
+  .common { background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow); }
+  .common > .ph { padding:13px 18px 0; display:flex; align-items:baseline; gap:10px; }
+  .common > .pb { padding:6px 18px 14px; display:grid; grid-template-columns:1fr 1fr; gap:0 24px; }
+  .common .ph h2 { font-size:14.5px; }
+  .common .ph .phsub { font-size:11.5px; }
+
+  /* course map (课内路线) */
+  .cm-strip { display:flex; gap:10px; overflow-x:auto; padding:10px 18px 16px; scrollbar-width:thin; }
+  .cm-card {
+    flex:none; width:242px; display:flex; flex-direction:column; gap:6px; text-align:left;
+    font-family:inherit; font-size:12px; color:var(--ink);
+    background:#F8FAFB; border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px 11px; cursor:pointer;
+    transition:border-color .15s ease, transform .15s ease;
+  }
+  .cm-card:hover { border-color:#B7BEC9; transform:translateY(-1px); }
+  .cm-card.cur { background:var(--ink); border-color:var(--ink); }
+  .cm-sem { font-size:12.5px; font-weight:800; letter-spacing:.01em; }
+  .cm-rg { font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
+  .cm-row { display:flex; flex-direction:column; gap:1px; padding-top:5px; border-top:1px solid var(--line-2); }
+  .cm-row:first-of-type { margin-top:2px; }
+  .cn { font-size:11.5px; font-weight:600; color:var(--ink-2); line-height:1.4; }
+  .cd { font-size:10.5px; color:var(--ink-3); line-height:1.4; }
+  .cm-line { display:flex; gap:6px; align-items:flex-start; padding-top:6px; border-top:1px dashed var(--line); font-size:10.5px; color:var(--ink-3); line-height:1.5; }
+  .lb { flex:none; font-style:normal; font-size:9.5px; font-weight:700; border-radius:4px; padding:1px 5px; margin-top:1px; }
+  .lb-pick { background:var(--pcb-soft); color:#8A3A12; }
+  .lb-exam { background:var(--ic-soft); color:#0A5A54; }
+  .cm-card.cur .cm-sem, .cm-card.cur .cn { color:#fff; }
+  .cm-card.cur .cm-rg, .cm-card.cur .cd, .cm-card.cur .cm-line { color:#AEB4BF; }
+  .cm-card.cur .cm-row { border-top-color:rgba(255,255,255,.14); }
+  .cm-card.cur .cm-line { border-top-color:rgba(255,255,255,.14); }
+  .cm-card.cur .lb-pick { background:rgba(224,139,90,.28); color:#F0B48C; }
+  .cm-card.cur .lb-exam { background:rgba(15,118,110,.4); color:#7FD1C8; }
+
+  /* milestones */
+  .ms { padding:4px 18px 16px; }
+  .ms-item { display:flex; gap:10px; padding:7px 0; align-items:flex-start; }
+  .ms-item .tt { font-size:13px; }
+  .ms-item .n { font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-top:3px; }
+
+  /* abilities */
+  .abil-group { display:flex; align-items:center; gap:7px; padding:10px 0 2px; font-size:11px; font-weight:700; letter-spacing:.07em; color:var(--ink-3); }
+  .abil-group::before { content:""; width:6px; height:6px; border-radius:50%; flex:none; }
+  .abil-group.ic::before { background:var(--ic); }
+  .abil-group.pcb::before { background:var(--pcb); }
+  .abil-group.common::before { background:var(--ink-3); }
+  .ab { display:grid; grid-template-columns:1fr auto; gap:2px 12px; align-items:center; padding:7px 0; border-top:1px solid var(--line-2); }
+  .abil-group + .ab { border-top:none; }
+  .ab.zero { opacity:.55; }
+  .ab .an { font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:7px; }
+  .ab .an::before { content:""; width:6px; height:6px; border-radius:50%; }
+  .ab.pcb .an::before { background:var(--pcb); }
+  .ab.ic .an::before { background:var(--ic); }
+  .ab.common .an::before { background:var(--ink-3); }
+  .ab .ap { font-family:var(--mono); font-size:11px; color:var(--ink-3); }
+  .ab .abar { grid-column:1 / 3; height:3px; border-radius:2px; background:var(--line-2); overflow:hidden; margin-top:4px; }
+  .ab .abar i { display:block; height:100%; width:100%; transform:scaleX(0); transform-origin:left; border-radius:2px; background:var(--ink-2); transition:transform .4s cubic-bezier(.22,1,.36,1); }
+  .ab.pcb .abar i { background:var(--pcb); }
+  .ab.ic .abar i { background:var(--ic); }
+
+  /* resources */
+  .res { padding:4px 18px 16px; }
+  .res-item { display:flex; align-items:baseline; gap:9px; padding:6.5px 0; border-top:1px solid var(--line-2); }
+  .res-item:first-of-type { border-top:none; }
+  .res-item .rn { font-size:12.5px; font-weight:600; }
+  .res-item .ru { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+  .res-item a .rn:hover { color:var(--focus); }
+
+  footer { margin-top:26px; padding-top:14px; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-3); }
+  footer .f-mono { font-family:var(--mono); }
+  .f-sync { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn-reset {
+    font-family:inherit; font-size:11.5px; color:var(--ink-3); background:none; border:1px solid var(--line);
+    padding:3px 10px; border-radius:6px; cursor:pointer;
+  }
+  .btn-reset:hover { color:#B33A3A; border-color:#D8A5A5; }
+
+  .empty { padding:18px; font-size:13px; color:var(--ink-3); }
+
+  /* animations */
+  @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  .panel, .track, .common { animation:rise .35s cubic-bezier(.22,1,.36,1) both; }
+  .tracks .track:nth-child(1) { animation-delay:.04s; }
+  .tracks .track:nth-child(2) { animation-delay:.09s; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation:none !important; transition:none !important; }
+  }
+
+  @media (max-width:1120px) {
+    .grid { grid-template-columns:1fr; }
+    .tracks { grid-template-columns:1fr; }
+    .common > .pb { grid-template-columns:1fr; }
+    .bar { flex-wrap:wrap; }
+  }
+  @media (max-width:640px) {
+    body { font-size:14px; }
+    .wrap { padding:0 14px 48px; }
+    .timeline { padding:12px 14px 4px; }
+    .cm-strip { padding:10px 14px 12px; }
+    .cm-card { width:216px; }
+    .today-date { display:none; }
+    .total .lbl { display:none; }
+    .res-item .ru { max-width:90px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <rect x="6" y="9" width="18" height="13" rx="2.5" stroke="#C4551C" stroke-width="1.6"/>
+        <rect x="6" y="9" width="18" height="13" rx="2.5" stroke="#0F766E" stroke-width="1.6" stroke-dasharray="24 52"/>
+        <circle cx="15" cy="15.5" r="3.2" fill="#171A20"/>
+        <path d="M6 12.5H2.5M6 17.5H2.5M6 22.5H2.5M24 12.5h3.5M24 17.5h3.5M24 22.5h3.5" stroke="#171A20" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M12 4.5v2M15 4.5v2M18 4.5v2M12 25.5v2M15 25.5v2M18 25.5v2" stroke="#171A20" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>双轨学习工作台</h1>
+        <div class="sub">PCB 轨 · FPGA/IC 轨 · 复旦统考主线 · 本校保底 · 2026–2029 执行计划</div>
+      </div>
+    </div>
+    <div class="bar-right">
+      <div class="today-date" id="todayDate"></div>
+      <div class="total">
+        <div class="nums"><div class="pct" id="totalPct">0%</div><div class="lbl" id="totalLbl">总进度</div></div>
+        <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+          <circle cx="19" cy="19" r="16" fill="none" stroke="#DCE0E7" stroke-width="4"/>
+          <circle id="totalRing" cx="19" cy="19" r="16" fill="none" stroke="#171A20" stroke-width="4"
+            stroke-linecap="round" transform="rotate(-90 19 19)" stroke-dasharray="100.5 100.5" stroke-dashoffset="100.5"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="timeline" id="timeline" role="tablist" aria-label="学习阶段"></div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+    <div class="col">
+      <section class="panel coursemap" aria-labelledby="h-cm">
+        <div class="ph">
+          <h2 id="h-cm">课内路线</h2>
+          <span class="phsub">学期重心 · 选课决策 · 考研节点 · 点卡片跳转阶段</span>
+        </div>
+        <div class="cm-strip" id="cmStrip"></div>
+      </section>
+
+      <section class="common" id="commonSec">
+        <div class="ph"><h2>考研 · 课内事务</h2><span class="phsub" id="commonSub"></span></div>
+        <div class="pb" id="commonList"></div>
+      </section>
+
+      <section class="panel today" aria-labelledby="h-today">
+        <div class="ph">
+          <h2 id="h-today">今日任务</h2>
+          <span class="phsub" id="todayPhase"></span>
+          <span class="sum" id="todaySum"></span>
+        </div>
+        <div class="pb" id="todayList"></div>
+      </section>
+
+      <div class="tracks">
+        <section class="track pcb" aria-labelledby="h-pcb">
+          <div class="ph"><h2 id="h-pcb">PCB 轨</h2><span class="prog" id="pcbProg"></span></div>
+          <div class="tbar"><i id="pcbBar"></i></div>
+          <div class="pb" id="pcbList"></div>
+        </section>
+        <section class="track ic" aria-labelledby="h-ic">
+          <div class="ph"><h2 id="h-ic">FPGA · IC 轨</h2><span class="prog" id="icProg"></span></div>
+          <div class="tbar"><i id="icBar"></i></div>
+          <div class="pb" id="icList"></div>
+        </section>
+      </div>
+
+      <section class="panel" aria-labelledby="h-ms">
+        <div class="ph"><h2 id="h-ms">阶段验收标准</h2><span class="phsub" id="msSub"></span></div>
+        <div class="ms" id="msList"></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-labelledby="h-ab">
+        <div class="ph">
+          <h2 id="h-ab">能力图谱</h2>
+          <span class="phsub">全部阶段 · 正在喂养的技能</span>
+        </div>
+        <div class="pb" id="abList"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-res">
+        <div class="ph">
+          <h2 id="h-res">当前阶段资源</h2>
+          <span class="phsub" id="resSub"></span>
+        </div>
+        <div class="res" id="resList"></div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <span>数据保存在本浏览器 localStorage · 换设备用「导出 / 导入进度码」手动同步</span>
+    <span class="f-mono">PCB ▲ C4551C · IC ▲ 0F766E</span>
+    <span class="f-sync">
+      <button class="btn-reset" id="btnExport" type="button">导出进度码</button>
+      <button class="btn-reset" id="btnImport" type="button">导入进度码</button>
+      <button class="btn-reset" id="btnReset" type="button">重置全部进度</button>
+    </span>
+  </footer>
+</main>
+
+<script>
+"use strict";
+/* ================= 计划数据（来自已确认的双轨学习计划） ================= */
+const ABILITIES = {
+  "vl-comb":  { name: "Verilog 组合逻辑", group: "ic" },
+  "vl-seq":   { name: "Verilog 时序逻辑", group: "ic" },
+  "fsm":      { name: "状态机设计",       group: "ic" },
+  "verify":   { name: "验证思维 / testbench", group: "ic" },
+  "fpga-tool":{ name: "FPGA 工具链",      group: "ic" },
+  "arch":     { name: "体系结构 / RISC-V", group: "ic" },
+  "scheme":   { name: "原理图设计",        group: "pcb" },
+  "comp":     { name: "元件认知与选型",    group: "pcb" },
+  "layout":   { name: "PCB 布局布线",      group: "pcb" },
+  "solder":   { name: "焊接工艺",          group: "pcb" },
+  "power":    { name: "功率电路布局",      group: "pcb" },
+  "debug":    { name: "系统调试",          group: "pcb" },
+  "review":   { name: "复盘与文档",        group: "common" },
+  "research": { name: "信息调研",          group: "common" },
+  "gpa":      { name: "专业课主线",        group: "common" },
+  "exam":     { name: "考研初试课程",      group: "common" },
+  "story":    { name: "项目讲述 · 面试表达", group: "common" },
+  "sta":      { name: "时序分析 / 约束",   group: "ic" }
+};
+
+/* ================= 资源词典（任务说明里引用的具体链接） ================= */
+const RES = {
+  hdlbits:    { n:"HDLBits", u:"https://hdlbits.01xz.net", k:"在线刷题主战场" },
+  hdlbits_zh: { n:"HDLBits 中文题解", u:"https://search.bilibili.com/all?keyword=HDLBits%20%E4%B8%AD%E6%96%87%E9%A2%98%E8%A7%A3", k:"卡壳 10 分钟后再看" },
+  kmaps:      { n:"HDLBits · Kmaps 区", u:"https://hdlbits.01xz.net", k:"卡诺图题对照" },
+  book_ds:    { n:"《电子技术基础·数字部分》课本", u:"", k:"第 4.8 节卡诺图例题" },
+  lceda_pro:  { n:"嘉立创EDA 专业版", u:"https://pro.lceda.cn", k:"项目B 就在这画" },
+  lceda_tut:  { n:"嘉立创EDA 官方入门教程", u:"https://search.bilibili.com/all?keyword=%E5%98%89%E7%AB%8B%E5%88%9BEDA%E6%95%99%E7%A8%8B", k:"新手跟着走一遍流程" },
+  oshwhub:    { n:"立创开源广场", u:"https://oshwhub.com", k:"搜“F103 最小系统”/小车参考" },
+  stm32_ds:   { n:"STM32F103C8T6 数据手册", u:"https://www.st.com/resource/en/datasheet/stm32f103c8.pdf", k:"PDF 目录跳：电源／时钟树／BOOT" },
+  stm32_ds_zh:{ n:"数据手册中文精读版（本地）", u:"", k:"项目文件夹内同名 HTML，按三章精编" },
+  swd_tut:    { n:"SWD 协议详解（B站）", u:"https://search.bilibili.com/all?keyword=SWD%E5%8D%8F%E8%AE%AE", k:"烧录链路原理" },
+  jx_stm32:   { n:"江协科技 STM32（B站）", u:"https://search.bilibili.com/all?keyword=%E6%B1%9F%E5%8D%8F%E7%A7%91%E6%8A%80STM32", k:"笔记模式：先懂概念再练" },
+  jlc_pcb:    { n:"嘉立创 PCB 打样", u:"https://jlcpcb.com", k:"下单项目B 板卡" },
+  tang_doc:   { n:"Tang Nano 9K 官方文档", u:"https://wiki.sipeed.com/hardware/zh/tang/tang-nano-9k/nano-9k.html", k:"环境搭建／约束／官方例程" },
+  fpga_intro: { n:"FPGA 入门视频（B站）", u:"https://search.bilibili.com/all?keyword=FPGA%E5%85%A5%E9%97%A8", k:"只看一次，建立印象" },
+  ic_daily:   { n:"“数字IC工程师的一天”类内容（B站）", u:"https://search.bilibili.com/all?keyword=%E6%95%B0%E5%AD%97IC%E5%B7%A5%E7%A8%8B%E5%B8%88", k:"看 3–5 条摸清真实工作" },
+  hh_book:    { n:"《数字设计和计算机体系结构》", u:"https://search.bilibili.com/all?keyword=%E6%95%B0%E5%AD%97%E8%AE%BE%E8%AE%A1%E5%92%8C%E8%AE%A1%E7%AE%97%E6%9C%BA%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84", k:"图书馆借阅，每周 1 章" },
+  ciciec:     { n:"集创赛官网", u:"https://univ.ciciec.com", k:"每年 3 月报名" },
+  nuedc:      { n:"电赛官网", u:"https://www.nuedc-training.com.cn", k:"赛题与流程" },
+  yehuo_vlg:  { n:"野火 Verilog 教程（B站）", u:"https://search.bilibili.com/all?keyword=%E9%87%8E%E7%81%ABVerilog", k:"语法卡壳时对照" },
+  sta_book:   { n:"《时序约束与分析的艺术》", u:"", k:"入门只看基础章节" },
+  tinyriscv:  { n:"tinyriscv 开源核（GitHub）", u:"https://github.com/liangkangnan/tinyriscv", k:"CPU 项目对照" },
+  github_home:{ n:"GitHub 个人仓库", u:"https://github.com", k:"作品集归档地" },
+  nowcoder_ic:{ n:"牛客网 · 数字IC面试专区", u:"https://www.nowcoder.com", k:"搜《数字IC面试快速指南》" },
+  fudan_site: { n:"复旦大学官网", u:"https://www.fudan.edu.cn", k:"站内搜：微电子学院 招生" },
+  sysu_site:  { n:"中山大学官网", u:"https://www.sysu.edu.cn", k:"站内搜：研究生院 推免" },
+  yzchsi:     { n:"中国研究生招生信息网", u:"https://yz.chsi.com.cn", k:"当届目录/报名/成绩" }
+};
+
+/* ================= 课内路线（来自培养方案 + 2026.08 访谈确认的选课决策） ================= */
+const COURSEPLAN = [
+  { phase: "p1", sem: "大二上", range: "2026.09 – 2027.01",
+    focus: [
+      ["数字电路与逻辑设计(一) + 实验", "3+1 学分 · 双轨共同地基 · 考研专业课核心"],
+      ["量子力学与固体物理", "4 学分 · GPA 最大权重 · 本校推免对冲盘"],
+      ["复变函数与数学物理方法", "4 学分 · 积分变换提前学，喂信号与系统"],
+      ["程序设计与实验", "2 学分 · C 语言=STM32 地基（指针/位运算）"],
+      ["信号与系统 · 电子电路实习 · Matlab", "3+1+1 学分 · 联动复变；实习喂 PCB 焊接"]
+    ],
+    picks: "三门专选全保留（信号 / 实习 / Matlab）",
+    exam: "考研未启动，GPA 打地基" },
+  { phase: "p2", sem: "寒假", range: "2027.01 – 02",
+    focus: [
+      ["先修：概率统计前两章", "= 数学一概率部分，提前消化考研"],
+      ["FPGA 课程大纲差异清单", "自学已超前半年，标记已会/要补"]
+    ],
+    picks: "无",
+    exam: "HDLBits 每周 ≥1 题，维持手感" },
+  { phase: "p3", sem: "大二下", range: "2027.03 – 06",
+    focus: [
+      ["硬件描述语言与FPGA设计", "自学超前半年 → 送分课，目标 ≥90"],
+      ["概率统计", "数学一概率部分直接重叠"],
+      ["半导体物理", "器件链起点 · 复试储备"],
+      ["高频电路", "数字方向低优先，稳过即可"]
+    ],
+    picks: "选：电子电路综合实验｜不选：现代物理技术开放性实验",
+    exam: "—" },
+  { phase: "p5", sem: "大三上", range: "2027.09 – 2028.02",
+    focus: [
+      ["数字集成电路设计", "笔记按考研深度做，对照自写 CPU"],
+      ["模拟集成电路设计", "复试常问：运放 / 频响 / 反馈"],
+      ["半导体器件物理", "器件链 · 复试问答储备"],
+      ["微处理器设计与实践(选)", "与 RISC-V CPU 项目互证"]
+    ],
+    picks: "必选三件套：微处理器设计+模集版图实验+创新技能训练｜不选通信原理",
+    exam: "考研启动：数学一 3h/周 · 英语每日 25m" },
+  { phase: "p6", sem: "大三下+暑假", range: "2028.03 – 08",
+    focus: [
+      ["微加工 / 工艺 / 表征 / 微纳器件(专必)", "GPA 策略过，笔记留复试器件问答"],
+      ["数字信号处理(专必)", "DSP 链收口，认真学"],
+      ["集成电路EDA工具与应用(选)", "综合/布线/仿真流程 · 求职+复试素材"]
+    ],
+    picks: "必选 EDA 工具｜其余选修不选（DSP 实验仅学分缺口补选）",
+    exam: "强化一轮：数学+专业课 · 目标分数拆解表" },
+  { phase: "p7", sem: "大四上", range: "2028.09 – 12",
+    focus: [
+      ["微机原理与嵌入式系统 + 实验", "两年 STM32 实战覆盖 → 速通不挂科"]
+    ],
+    picks: "只选：集成电路测试技术｜传感器 / 光电 / 光通信等全弃",
+    exam: "9 月推免决策(本校对冲) → 全力初试 · 12 月底开考" },
+  { phase: "p8", sem: "大四下", range: "2029.01 – 06",
+    focus: [
+      ["毕业设计", "选题贴数字 IC / FPGA，与作品集打组合拳"]
+    ],
+    picks: "无",
+    exam: "2 月底出分 → 复试演练 / 调剂预案" }
+];
+
+const PHASES = [
+  {
+    id: "p0", name: "在家过渡期", range: "2026.08.23 – 09.06",
+    start: "2026-08-23", end: "2026-09-06",
+    note: "零设备黄金期 · 每日约 2.5h",
+    tracks: {
+      ic: [
+        { id: "i0-1", t: "HDLBits：Getting Started 区全通", m: 60, done: true, a: ["vl-comb"], daily: false, d: "从第一题 Step One 开始把 GETTING STARTED 区全部提交通过。每题先自己写，卡住超过 10 分钟再翻中文题解，然后关掉题解重写一遍。完成标准：该区每道题都显示 Passed。", rr: ["hdlbits", "hdlbits_zh"] },
+        { id: "i0-2", t: "HDLBits：Basics 区（wire4 起步 · 抄→改→写三步法）", m: 60, a: ["vl-comb"], daily: true, d: "三步法：抄（照抄官方示例理解写法）→ 改（改位宽/接口做成变体）→ 写（不看答案独立完成）。每天 1–2 题，重点理解 wire 与 assign 的含义，目标两周内该区全通。", rr: ["hdlbits", "hdlbits_zh", "yehuo_vlg"] },
+        { id: "i0-3", t: "HDLBits：Vectors 区前 3 题（进阶）", m: 30, a: ["vl-comb"], daily: true, d: "只做前三题 Vector0/1/2。搞懂三件事：[7:0] 位宽怎么声明、{ } 位拼接怎么用、索引取位怎么写。每题同样走抄→改→写三步。", rr: ["hdlbits"] },
+        { id: "i0-4", t: "卡诺图验证：课本 4.8 两题 → Karnaugh Map 区对照", m: 30, a: ["vl-comb"], daily: true, d: "先用课本第 4.8 节两道卡诺图例题在草稿纸上做完，再去 HDLBits 的 Kmaps 区找同类题提交。两种方法结果一致 → 说明你学对了；不一致 → 回课本查原因。", rr: ["kmaps", "book_ds"] },
+        { id: "i0-5", t: "入门视频：FPGA 与 Verilog 是什么（一次性，30min）", m: 30, a: ["research"], once: true, d: "只建立一个整体印象：FPGA 是“可以反复重新配置的硬件电路”，Verilog 是“描述电路的硬件语言”。看完写 3–5 行笔记（“一句话总结 + 3 个关键词”），一次看完，不重看。", rr: ["fpga_intro"] },
+        { id: "i0-6", t: "IC 方向调研：数字IC工程师的一天 ×3-5（证伪机制）", m: 60, a: ["research"], once: true, d: "看 3–5 条“数字IC工程师/验证工程师的一天”类视频或文章，边看边问自己“这段工作我喜不喜欢、值不值”。把犹豫点记下来。最后用一页纸回答：还走不走 IC？是 → 继续；否 → 今晚重开计划。", rr: ["ic_daily"] }
+      ],
+      pcb: [
+        { id: "p0-1", t: "注册嘉立创EDA 专业版 + 官方入门教程", m: 60, a: ["scheme"], once: true, d: "注册账号后跟着官方入门教程完整做一遍：新建工程 → 放第一个元件 → 连线 → 转 PCB 看效果。只求看懂流程，不追求布局美观。", rr: ["lceda_pro", "lceda_tut"] },
+        { id: "p0-2", t: "项目B 复刻：每天把 2–3 个器件动手画进 EDA（做中学）", m: 40, a: ["scheme", "comp"], daily: true, d: "目的：不“纸上研究”——选好的开源工程做底座，每天动手把 2–3 个器件放进 EDA、连线、写一行“为什么”，画完就是你的项目B 初稿。\n步骤：\n① 打开挑好的 F103 最小系统工程，定位今天要抄的 2–3 个器件（先电源：LDO+电容）\n② 在 EDA 里照结构放置元件、连线（看不懂的地方先照着画，马上问）\n③ 每个器件边画边答：它为什么在这？参数为什么是这个值？（查手册/对照讲法）\n④ 画完对比原工程差异，记进“为什么”笔记\n完成标准：阶段结束时 = 完整原理图初稿（电源/晶振/BOOT/SWD/复位五模块），全图器件都能讲为什么 —— 这就是本阶段交付物。", rr: ["lceda_pro", "oshwhub"] },
+        { id: "p0-3", t: "数据手册按需查询：电源 / 时钟树 / BOOT", m: 15, a: ["comp"], daily: true, d: "目的：手册是字典不是课本——项目B 画到哪、查到哪，每次不超过 10 分钟。\n步骤：\n① 画电源模块时 → 查 VDD 范围与 5×100nF+4.7µF 接法\n② 画晶振时 → 查 HSE 4–16 MHz 与负载电容\n③ 调启动/烧录时 → 查 BOOT 选择表\n④ 中文优先翻中文精读版，找不到再查原 PDF 关键词\n完成标准：项目B 原理图画完时，能随口说出三个关键参数：VDD 2.0–3.6V、HSE 4–16MHz、BOOT0=0 进主 Flash。", rr: ["stm32_ds", "stm32_ds_zh"] },
+        { id: "p0-4", t: "SWD 协议 + 烧录原理（配江协科技入门集看懂下载链路）", m: 60, a: ["comp"], once: true, d: "目的：弄懂下载链路——项目B 的板子要靠它点亮，这也是以后所有 STM32 项目的通用技能。\n步骤：\n① 先看江协科技的前 1–2 集（认识单片机 + 下载器在干嘛）\n② 再看 1 篇 SWD 图文回答三问：两线（SWCLK/SWDIO）怎么读写芯片？下载器怎么“接管”调试口？为什么是四根线？\n③ 复刻一枚：画一张 ST-Link ↔ F103 四线接线图\n完成标准：能对着接线图解释每根线的作用，并且这张图你手画得出来。", rr: ["jx_stm32", "swd_tut", "stm32_ds"] },
+        { id: "i0-7", t: "江协科技视频主线：GPIO→按键→中断→定时器（每日一集）", m: 30, a: ["debug"], daily: true, d: "目的：视频驱动 + 动手复刻——每看完一集，就把示例在实物上跑一遍；到货前先“笔记 + 仿敲代码”。\n步骤：\n① 每天 30 分钟看/跟做 1 个小节（顺序：GPIO 点灯 → 按键 → 中断 → 定时器）\n② 用蓝板（约 ¥20，已列入物资）实际复刻：点灯/按键每集 15 分钟跑通\n③ 蓝板未到货时：暂停 + 笔记，把示例代码敲进工程学着编译通过\n完成标准：四节实验全在蓝板上跑通过（点灯→按键→中断→定时器）。", rr: ["jx_stm32"] }
+      ]
+    },
+    common: [
+      { id: "c0-1", t: "第一批物资下单：T12焊台 / 万用表 / ST-Link / 练习板 / 蓝板…（≈¥285）", a: ["research"], once: true, d: "清单核对后一次下单：T12 焊台、万用表、ST-Link 下载器、焊接练习板、STM32F103C8T6 蓝板（约 ¥15–20，跟江协视频做中学用）+ 杜邦线，加上镊子/斜口钳等工具，合计约 ¥285。淘宝/拼多多任选，总价不超预算即可，下单后记录订单号。", rr: [] },
+      { id: "c0-2", t: "物资开箱验收", a: ["solder"], once: true, d: "到货当天逐项验收：焊台通电能融锡、万用表能测电压、ST-Link 装了驱动能被电脑识别。有问题当天拍照申请换补。验收通过才算完成。", rr: [] }
+    ],
+    milestones: [
+      "HDLBits Basics 区全通，且能独立重写每道通过的题",
+      "项目B 原理图初稿完成，每个器件能说出“为什么存在”",
+      "第一批物资到货并验收",
+      "IC 调研完成：仍确认想读研 IC —— 是则继续加码，否则重开计划"
+    ],
+    resources: [
+      { name: "HDLBits", url: "https://hdlbits.01xz.net", note: "IC 轨主战场" },
+      { name: "HDLBits 中文题解", url: "https://search.bilibili.com/all?keyword=HDLBits%20%E4%B8%AD%E6%96%87%E9%A2%98%E8%A7%A3", note: "卡壳时对照" },
+      { name: "嘉立创EDA 专业版", url: "https://pro.lceda.cn", note: "PCB 轨画图" },
+      { name: "立创开源广场", url: "https://oshwhub.com", note: "抄优秀工程" },
+      { name: "STM32F103C8T6 数据手册", url: "https://www.st.com/resource/en/datasheet/stm32f103c8.pdf", note: "只读三章" },
+      { name: "江协科技（B站）", url: "https://search.bilibili.com/all?keyword=%E6%B1%9F%E5%8D%8F%E7%A7%91%E6%8A%80STM32", note: "笔记模式" }
+    ]
+  },
+  {
+    id: "p1", name: "大二上", range: "2026.09 – 2027.01",
+    start: "2026-09-07", end: "2027-01-10",
+    note: "每周 3h = PCB 1.5h + IC 1.5h",
+    tracks: {
+      ic: [
+        { id: "i1-1", t: "HDLBits 组合逻辑区：门电路 / 算术电路 / 多路选择器", m: 90, a: ["vl-comb"], weekly: true, d: "每周抽 90 分钟，按 门电路（Gate）→ 算术电路（Arithmetic）→ 多路选择器（Mux） 顺序刷，每周 3 题左右。保持抄→改→写三步法，每题写完口述一遍思路。", rr: ["hdlbits"] },
+        { id: "i1-2", t: "HDLBits 卡诺图区（3/4变量）与数电课同步互证", m: 90, a: ["vl-comb"], weekly: true, d: "上课学到卡诺图化简的当周：先用教材例题，再去 HDLBits Kmaps 区提交同型题验证。两边结果一致 = 你真懂了化简定理；不一致 → 回课本查原因。", rr: ["hdlbits", "book_ds"] },
+        { id: "i1-3", t: "第二批物资：Tang Nano 9K（¥118）+ F103 元件包（按BOM核对）", m: 30, a: ["research"], once: true, d: "目的：把项目B 打样要用到的元件一次买齐，避免焊接时东拼西凑。\n步骤：\n① 项目B 原理图画完后，在 EDA 里生成 BOM 清单\n② 逐项核对：F103C8T6、LDO、8MHz 晶振、负载电容、BOOT 电阻、排针、SWD 线\n③ 对照 BOM 下单元件包；再单独加购 Tang Nano 9K（约 ¥118）\n完成标准：BOM 上的每一项都有实物或在途。", rr: ["tang_doc"] },
+        { id: "i1-4", t: "开学第一周：实验室摸底——示波器/电源能否长期借用", m: 30, a: ["research"], once: true, d: "找实验室/创新基地老师或学长问 4 件事：示波器、电源、烙铁能否长期借用？有没有固定台位？开放时间？申请流程？问清后把结果记下来。", rr: [] }
+      ],
+      pcb: [
+        { id: "p1-1", t: "项目B：原理图——电源（LDO/滤波/ESD）", m: 45, a: ["scheme", "comp"], weekly: true, d: "目的：项目B 的电源做对 = 稳定 3.3V + 防反接 + 纹波干净，这是整块板子的地基。\n步骤：\n① 5V 输入 → AMS1117-3.3（按自己需求可换型号）→ 3.3V 输出\n② 按数据手册建议设置输入/输出电容（典型：输入 10uF + 0.1uF、输出 10uF + 0.1uF）\n③ 输入加反接保护（二极管或保险丝），防倒灌\n④ 每放一个器件写一行“为什么”\n完成标准：能讲清选 LDO 的依据、每个电容在电压曲线里扮演什么角色。", rr: ["stm32_ds"] },
+        { id: "p1-2", t: "项目B：原理图——晶振/复位/BOOT/SWD", m: 45, a: ["scheme"], weekly: true, d: "目的：补全最小系统的四大关键模块——没有它们芯片起不来，这也是最能检验“为什么存在”的部分。\n步骤：\n① 8MHz 晶振 + 两个负载电容（数值按数据手册/实际经验 15–30pF）\n② 复位：按键 + 复位电容/配套电路，接 NRST\n③ BOOT：BOOT0 串电阻到地（低）作复位后启动 flash；BOOT1 接 VCC 或地\n④ SWD：GND / 3V3 / SWCLK / SWDIO 四线接对\n完成标准：四条链路（时钟/复位/启动/调试）逐个能画出并解释，与数据手册核对无冲突。", rr: ["stm32_ds"] },
+        { id: "p1-3", t: "项目B：Layout——布局分区 + 布线规范", m: 45, a: ["layout"], weekly: true, d: "目的：把原理图变成能打样的布局布线——同时学习布局分区与线宽规则，这是 PCB 能力的主要养成阶段。\n步骤：\n① 布局：按功能区排布（电源在板边、晶振紧贴 MCU、SWD 在板边）、元件按信号流向放置\n② 设规则：电源线 ≥1mm、信号线 ≥0.25mm，先设后走\n③ 布线：优先走关键线（晶振、SWD），其余按规则走完\n④ 与开源工程对照布局差距，记录差异与理由\n完成标准：板子布完（无未连接飞线/DRC 警告），你能说出每条布局选择的理由。", rr: ["oshwhub", "jlc_pcb"] },
+        { id: "p1-4", t: "项目B：打样下单 + QFN 焊接练习板练手", m: 45, a: ["solder"], weekly: true, d: "目的：项目B 打样下单 + 提前练好 QFN/小元件焊接，避免把第一块真板当练习板焊废。\n步骤：\n① 嘉立创下单：选好板厚/层数（2 层即可）/颜色，提交打样\n② 同时下单 QFN 焊接练习板 + 0402/0603 阻容练习件\n③ 练习板练习：先焊大的，再焊小的；QFN 用拖焊/风枪，焊完用万用表排查虚焊短路\n完成标准：练习板上能焊好 0402/0603 + QFN，且能熟练用万用表测通断。", rr: ["jlc_pcb"] },
+        { id: "p1-5", t: "项目B：焊接调试——点灯→串口→SWD 烧录", m: 45, a: ["debug", "solder"], weekly: true, d: "目的：验证项目B 整机——真正检验原理图/布局/焊接的最终环节，目标是“点亮 + 通串口 + 可烧录”。\n步骤：\n① 目检 + 万用表测：电源对地短路？焊点虚焊？\n② 上电先测电源：3.3V/LDO 输出是否正确、温升正常\n③ 点灯：烧点灯程序，GPIO 亮\n④ 串口：打印 hello，看串口助手输出\n⑤ SWD：驱动、接线，下载/读取芯片\n⑥ 每步失败先断电再排查，问题记日志\n完成标准：点灯成功 + 串口打印 hello + SWD 下载成功。", rr: ["jx_stm32"] }
+      ]
+    },
+    common: [
+      { id: "c1-1", t: "数电主线：核心课每周错题复盘（考研专业课地基）", m: 40, a: ["gpa"], weekly: true, d: "目的：数电既是考研专业课的核心，也是数字 IC 的地基——这门课学透，后面 HDLBits、复旦初试专业课都在吃它的老本。\n步骤：\n① 每周固定 40 分钟，把本周数电错题与卡壳点过一遍\n② 每章结束用 10 行笔记总结，期末与考研专业课两用\n③ 后续学期用同样方式覆盖模电等其他核心课\n完成标准：数电期末 ≥85 分，错题本持续更新。", rr: [] }
+    ],
+    milestones: [
+      "核心板上电不冒烟，串口打印 hello，SWD 下载成功",
+      "能向别人讲清每个器件为什么存在 + 完整烧录链路",
+      "HDLBits 组合逻辑区全通",
+      "数电期末 ≥85（考研专业课地基）",
+      "第二批物资到货，实验室借用政策问清"
+    ],
+    resources: [
+      { name: "立创开源广场：F103 最小系统工程", url: "https://oshwhub.com", note: "Layout 对照差距" },
+      { name: "STM32F103C8T6 数据手册", url: "https://www.st.com/resource/en/datasheet/stm32f103c8.pdf", note: "电源/时钟/BOOT" },
+      { name: "SWD 协议详解", url: "https://search.bilibili.com/all?keyword=SWD%E5%8D%8F%E8%AE%AE", note: "烧录原理" },
+      { name: "高云 Tang Nano 9K 文档", url: "https://wiki.sipeed.com/hardware/zh/tang/tang-nano-9k/nano-9k.html", note: "下月到货" }
+    ]
+  },
+  {
+    id: "p2", name: "寒假", range: "2027.01 – 02",
+    start: "2027-01-11", end: "2027-02-28",
+    note: "每日 1–2h · FPGA 轨启动",
+    tracks: {
+      ic: [
+        { id: "i2-1", t: "Tang Nano 9K 环境搭建（云源软件/驱动）", m: 60, a: ["fpga-tool"], once: true, d: "按官方 wiki 步骤装：高云云源软件 + USB 驱动 + License 授权，然后用内置例程跑通一次“综合→烧录→板子亮灯”。工具链通了再写自己的代码。", rr: ["tang_doc"] },
+        { id: "i2-2", t: "流水灯实验：综合→约束→下板 全流程", m: 60, a: ["fpga-tool", "vl-seq"], daily: true, d: "写一个带时钟分频的 3 位计数器驱动 3 个 LED：综合 → 引脚约束（把 LED 绑定到物理管脚）→ 下板。每步报错都记录，这是你的第一次完整工具链闭环。", rr: ["tang_doc"] },
+        { id: "i2-3", t: "按键消抖（同步逻辑入门）", m: 60, a: ["vl-seq"], daily: true, d: "了解按键抖动来源，用“两级同步器 + 20ms 计数器”写消抖模块；接一个按键到 FPGA，按下时 LED 稳定翻转。先逻辑仿真，再上板验证。", rr: ["tang_doc"] },
+        { id: "i2-4", t: "维持 HDLBits 手感：每周 ≥1 题", m: 30, a: ["vl-comb"], weekly: true, d: "每周 30 分钟做 1 道 HDLBits 题（组合逻辑为主），随挑选题即可，目的是保持 RTL 手感不断。", rr: ["hdlbits"] }
+      ],
+      pcb: [
+        { id: "p2-1", t: "项目B 复盘笔记撰写（踩坑记录）", m: 60, a: ["review"], daily: true, d: "目的：把项目B 的经验沉淀成文字——这是你简历里最扎实的作品集素材，也让下一次项目C 少踩同样的坑。\n步骤：\n① 按四类整理：原理图 / Layout / 焊接 / 调试\n② 每类写：踩了什么坑 → 原因 → 怎么解决 → 下次怎么避免\n③ 每天写一小节（约 200 字），寒假结束成文\n完成标准：形成一篇完整复盘文档（含图片），别人能照着看懂你的设计思路与教训。", rr: [] },
+        { id: "p2-2", t: "复盘帖发布到立创开源广场", m: 30, a: ["review"], once: true, d: "目的：作品集第一件公开发布——让看不见的付出有可见的锚点，也顺便让社区帮你挑毛病。\n步骤：\n① 复盘文档改成图文帖：BOM 清单 + 原理图截图 + 实物照片 + 踩坑清单\n② 标题起得具体（如“我的第一块 STM32 最小系统板”），配效果照片\n③ 发布到立创开源广场，隔几天回来看看评论\n完成标准：帖子成功发布，链接收藏进简历。", rr: ["oshwhub"] }
+      ]
+    },
+    common: [
+      { id: "c2-1", t: "GitHub 建仓：项目B + HDLBits 代码归档（作品集起点）", m: 40, a: ["review"], once: true, d: "目的：从寒假起所有代码与文档进 GitHub——复试/找实习时一个持续更新的仓库比任何自夸都可信。\n步骤：\n① 建个人仓库：分目录放 HDLBits 题解、项目B 原理图与复盘文档\n② README 写清每项是什么、怎么复现\n③ 之后每个项目结束同步一次，保持提交记录连续\n完成标准：仓库建成并完成首次提交，README 可读。", rr: ["github_home"] },
+      { id: "c2-2", t: "大二下先修：概率统计借教材过前两章 + 摸 FPGA 课程大纲", m: 40, a: ["exam", "gpa"], once: true, d: "目的：下学期两门硬课提前占位——概率统计与考研数学一概率部分直接重叠，先修=提前考研；FPGA 课（硬件描述语言与FPGA设计）大纲找学长要一份，对照自己的进度标记“已会/要补”。\n步骤：\n① 概率统计前两章（随机事件/一维随机变量）习题过一遍\n② 拿到 FPGA 课大纲，列“已会/要补”差异清单\n完成标准：两章习题完成 + 差异清单一份。", rr: [] }
+    ],
+    milestones: [
+      "流水灯在 FPGA 板上跑通（工具链全流程打通）",
+      "项目B 复盘帖在开源广场发布——简历作品集第一件",
+      "Verilog 进度领先课内：大二下 FPGA 课=巩固课",
+      "按键消抖实验完成"
+    ],
+    resources: [
+      { name: "高云 Tang Nano 9K 文档", url: "https://wiki.sipeed.com/hardware/zh/tang/tang-nano-9k/nano-9k.html", note: "官方教程" },
+      { name: "小梅哥/野火 FPGA", url: "https://search.bilibili.com/all?keyword=FPGA%E6%95%99%E7%A8%8B%20%E9%87%8E%E7%81%AB", note: "按需查概念" },
+      { name: "HDLBits", url: "https://hdlbits.01xz.net", note: "保持手感" }
+    ]
+  },
+  {
+    id: "p3", name: "大二下", range: "2027.03 – 06",
+    start: "2027-03-01", end: "2027-06-30",
+    note: "每周 4h+ · 时序逻辑 + 整合项目 + 小车",
+    tracks: {
+      ic: [
+        { id: "i3-1", t: "HDLBits 时序逻辑区：触发器/计数器/移位寄存器", m: 90, a: ["vl-seq"], weekly: true, d: "刷 Sequential Logic 区：触发器 → 计数器 → 移位寄存器。最重要的是理解 always @(posedge clk) 同步写法，以及阻塞/非阻塞赋值的区别；错题回看这一条。", rr: ["hdlbits"] },
+        { id: "i3-2", t: "状态机设计与仿真（testbench 入门）", m: 90, a: ["fsm", "verify"], weekly: true, d: "学状态机三要素（状态、转移条件、输出），用三段式写法做一个例子；再写 testbench 仿真，逼自己看波形图读时序——学会“用波形验证逻辑”而不是只看结果对不对。", rr: ["hdlbits"] },
+        { id: "i3-3", t: "FPGA 串口 UART 收发实验（下板联调）", m: 60, a: ["debug", "verify"], weekly: true, d: "实现 8n1 UART：波特率分频（系统时钟 ÷ 115200）、发送状态机、接收状态机；用串口助手收发回显验证。这是未来一切下板联调的基本功。", rr: ["tang_doc"] },
+        { id: "i3-4", t: "整合项目：FPGA 小游戏（VGA/HDMI 显示 + 按键交互）", m: 90, a: ["fsm", "verify", "debug"], weekly: true, d: "目的：学期旗舰项目——把状态机、时序逻辑、UART 调试串成能演示给别人玩的完整系统，这是面试深挖的主素材。\n步骤：\n① 按板载接口选显示方案（HDMI 直接用；VGA 则 3 根信号线 + 电阻网络）\n② 先做行/场同步时序发生器，再写游戏状态机，每个模块先仿真看波形再下板\n③ 用 UART 打印调试信息定位问题\n④ 项目结束写一篇记录发 GitHub/知乎\n完成标准：能现场演示给同学玩；能回答“时钟改到 100MHz 会出什么问题”。", rr: ["tang_doc", "github_home"] },
+        { id: "i3-5", t: "时序分析入门：建立/保持时间 + 约束概念", m: 30, a: ["sta"], weekly: true, d: "目的：数字 IC 面试必考——现在用 FPGA 把概念摸熟，以后 STA 课程与面试直接受益。\n步骤：\n① 搞懂建立时间/保持时间、时钟偏斜、关键路径，手画时间轴图\n② 在工具里看一次时序报告（WNS/TNS 是什么意思）\n③ 给自己的 UART/小游戏工程加一次时钟约束\n完成标准：能默写建立时间检查公式，并说出 WNS 为负时先查什么。", rr: ["sta_book"] },
+        { id: "i3-6", t: "课内锚点：硬件描述语言与FPGA设计（用超前实践换 GPA）", m: 30, a: ["fpga-tool", "gpa"], weekly: true, d: "目的：本学期开课的 FPGA 课就是你已自学的领域——用课内节拍做系统复盘，作业实验拿满，省下的精力投给小车与小游戏。\n步骤：\n① 课前 10 分钟对照自己的工程回忆本节概念\n② 实验提前做（你有板子有环境），课后帮同学 debug 建立口碑\n③ 概率统计同步认真：它是数学一概率部分的直接重叠，学它=提前考研\n完成标准：课程成绩 ≥90，且期末复习时间不超过别人一半。" }
+      ],
+      pcb: [
+        { id: "p3-1", t: "项目C：原理图——H桥电机驱动 + 功率级", m: 45, a: ["scheme", "power"], weekly: true, d: "先选型（H 桥集成芯片或 4-MOS 分立方案）列选型表，再画原理图：驱动电路、过流保护、续流二极管、功率地。参考开源小车工程比着画。", rr: ["oshwhub"] },
+        { id: "p3-2", t: "项目C：原理图——电源管理（电池→DCDC→LDO）", m: 45, a: ["power", "comp"], weekly: true, d: "电源链路：电池 → 防反接/过流保护 → DC-DC 降压（电机功率）→ LDO（逻辑供电）。按峰值电流留足裕量，每条走线算一次电流密度。", rr: ["oshwhub"] },
+        { id: "p3-3", t: "项目C：传感器接口（循迹/编码器）+ 布局分区", m: 45, a: ["layout"], weekly: true, d: "画循迹红外模块和编码器接口（上下拉/滤波电容）；布局时传感器放车头/线上，远离电机与电源环路，接口留排针方便更换。每个电容的作用要能讲出。", rr: ["oshwhub"] },
+        { id: "p3-4", t: "项目C：Layout——功率地/信号地分离", m: 45, a: ["layout", "power"], weekly: true, d: "功率地与信号地分开走、最后单点汇接；大电流环路画短画粗。原则：噪声大的（电机驱动）远离 MCU 和传感器；先想清楚地怎么走再布线。", rr: ["oshwhub"] },
+        { id: "p3-5", t: "项目C：打样 + 焊接 + 闭环联调（循迹跑通）", m: 45, a: ["debug", "solder"], weekly: true, d: "分阶段调试：上电先测电源 → 目检/表测焊点 → 烧程序逐模块验证 → 整机闭环（循迹跑通）。每步失败先断电再查，过程记日志。", rr: ["jlc_pcb"] }
+      ]
+    },
+    common: [
+      { id: "c3-1", t: "申大创/进实验室：锁定一个 FPGA/数字 IC 课题", m: 60, a: ["research"], once: true, d: "目的：夏令营和复试要的是“在课题里干过”，不是“自学过”。\n步骤：\n① 3–4 月盯学院大创申报通知，锁定做数字方向/FPGA 的老师\n② 带着小游戏项目与复盘文档去敲门，展示执行力\n③ 大创立项不成，退一步进实验室打杂也可以\n完成标准：大创立项成功或进组，拿到明确课题。", rr: ["github_home"] },
+      { id: "c3-2", t: "第三批物资：Artix-7 系板卡（EGO1/小眼睛，Vivado 生态）", m: 30, a: ["research"], once: true, d: "目的：从高云过渡到 Xilinx/Vivado 生态——业界主流工具链，竞赛、实习、读研都绕不开。\n步骤：\n① 预算 ¥300–600：EGO1 / 小眼睛系列 / 二手均可\n② 到货先跑通 Vivado：综合→实现→烧录→板子亮灯\n③ 与高云工具链对照，记录流程差异\n完成标准：Vivado 全流程至少跑通一次。", rr: [] }
+    ],
+    milestones: [
+      "小车闭环循迹跑通，H桥温升正常",
+      "能讲清功率地/信号地分离的布局理由（面试深聊点）",
+      "状态机可独立设计，UART 下板联调通过",
+      "HDLBits 时序逻辑区全通",
+      "整合小游戏可现场演示，记录已发布 GitHub",
+      "能讲清建立/保持时间与关键路径（STA 入门）",
+      "大创立项或进实验室成功"
+    ],
+    resources: [
+      { name: "HDLBits 时序逻辑区", url: "https://hdlbits.01xz.net", note: "触发器/计数器/状态机" },
+      { name: "立创开源广场：小车/驱动板参考", url: "https://oshwhub.com", note: "H桥与电源布局对照" },
+      { name: "集创赛官网", url: "https://univ.ciciec.com", note: "大三报名，提前看赛道" }
+    ]
+  },
+  {
+    id: "p4", name: "暑假 · 电赛国赛", range: "2027.07 – 08",
+    start: "2027-07-01", end: "2027-08-31",
+    note: "2027 国赛 · 控制类方向",
+    tracks: {
+      ic: [
+        { id: "i4-1", t: "集训：控制类题架构梳理（复用小车底板）", m: 90, a: ["debug"], weekly: true, d: "把近三年控制类赛题拆成“传感→处理→执行”三块，逐题看小车底板能复用哪些。输出一页架构框图 + 模块清单，方向先定死，后面不慌。", rr: ["nuedc"] },
+        { id: "i4-2", t: "维持 HDLBits 手感 + 状态机专项", m: 60, a: ["fsm"], weekly: true, d: "每周 1–2 道 HDLBits 的 Finite State Machines 区题目，保持状态机设计手感。", rr: ["hdlbits"] }
+      ],
+      pcb: [
+        { id: "p4-1", t: "赛题硬件适配板（按赛题需求改板/加板）", m: 90, a: ["layout", "debug"], weekly: true, d: "按赛题需要做一块适配板：先列清单（需要哪些接口、电源、尺寸限制），接口尽量做冗余与复用，画完检查与小车底板的对接。", rr: ["oshwhub", "jlc_pcb"] },
+        { id: "p4-2", t: "冗余设计：备件焊接、接口容错", m: 60, a: ["solder", "debug"], weekly: true, d: "关键元件（驱动芯片、LDO、电感）留 1 份备件焊好；接口加防反接与保护；模拟一次故障（断线/短路/接反）看系统怎么挂，提前排雷。", rr: [] }
+      ]
+    },
+    common: [
+      { id: "c4-1", t: "整机联调与流程演练（四人一队节奏）", a: ["debug"], weekly: true, d: "和队友做一次全流程计时演练：拿题 → 方案 → 分工 → 焊接 → 固件 → 联调 → 提交。找出拖节奏的环节，改进分工与沟通记录。", rr: ["nuedc"] }
+    ],
+    milestones: [
+      "完成参赛作品并提交/完赛",
+      "全流程能力闭环：原理图→Layout→焊接→固件→联调",
+      "暑期结束做一次全局复盘"
+    ],
+    resources: [
+      { name: "全国大学生电子设计竞赛", url: "https://www.nuedc-training.com.cn", note: "赛题与流程" },
+      { name: "立创开源广场", url: "https://oshwhub.com", note: "赛前抄题解架构" }
+    ]
+  },
+  {
+    id: "p5", name: "大三上 · 考研启动", range: "2027.09 – 2028.02",
+    start: "2027-09-01", end: "2028-02-29",
+    note: "考研启动 6h/周 · IC 旗舰 5h/周",
+    tracks: {
+      ic: [
+        { id: "i5-1", t: "H&H《数字设计和计算机体系结构》阅读（图书馆）", m: 90, a: ["arch"], weekly: true, d: "图书馆借书，每周读 1 章，重点：组合逻辑、时序逻辑、RISC-V 指令集。每章用 10 行写完笔记，能给别人讲清才算读完，为做 CPU 打基础。", rr: ["hh_book"] },
+        { id: "i5-2", t: "简易 RISC-V CPU：取指/译码/执行逐步实现", m: 120, a: ["arch", "fsm"], weekly: true, d: "流程：设计最简指令集 → 取指/译码/执行每步一个模块，先单独仿真再上板 → 从加法开始逐条加指令（跳转/分支）。每个模块跑通看波形后再进行下一步。", rr: ["tang_doc", "tinyriscv"] },
+        { id: "i5-3", t: "集创赛 FPGA 赛道备赛（2028.03 报名）", m: 90, a: ["fpga-tool", "verify"], weekly: true, d: "盯官网报名时间（每年 3 月），先做往年题 1–2 道练流程：先通工具链，再谈优化速度与资源。", rr: ["ciciec"] },
+        { id: "i5-4", t: "课内锚点：数字集成电路设计 + 模拟集成电路设计（按考研深度做笔记）", m: 60, a: ["exam", "gpa"], weekly: true, d: "目的：这两门专必是数字 IC 的正统课，也是复旦初试/复试最可能覆盖的内容——笔记直接按考研标准做，一课两用。\n步骤：\n① 每周课后 60 分钟把笔记整理成“考点式”（定义/推导/例题）\n② 数字集设与你的 CPU 项目互证：课内讲单周期/流水线时对照自己的实现\n③ 模集重点吃透：运放/频率响应/反馈（复试常问）\n完成标准：期末 ≥90；笔记可直接当考研专业课复习材料。" }
+      ],
+      pcb: [
+        { id: "p5-1", t: "按需支援队友（PCB 保退路，机动）", m: 60, a: ["layout"], weekly: true, d: "主航道已经转向 IC，PCB 保底投入：队友需要时帮忙出原理图/布局，维持工具熟练度即可，不主动加工作量。", rr: ["oshwhub"] }
+      ]
+    },
+    common: [
+      { id: "c5-1", t: "考研数学一启动：高数 + 线代基础轮（每周固定 3h）", m: 180, a: ["exam"], weekly: true, d: "目的：数学一是初试分差最大的一科，决定你能不能过复旦的线——大三上启动最稳。\n步骤：\n① 高数 → 线代，教材/基础网课过一遍，每章必配习题\n② 每周固定 3 小时雷打不动，与 IC 项目分时段\n③ 错题按“概念/计算/思路”三类归因\n完成标准：寒假结束前高数 + 线代基础轮完成。", rr: ["yzchsi"] },
+      { id: "c5-2", t: "英语一主线：每日单词 + 长难句精读", m: 25, a: ["exam"], daily: true, d: "目的：英语是慢功夫，日均 25 分钟远胜考前突击。\n步骤：\n① 每天背词 15 分钟（APP 任选）\n② 每天精读考研阅读真题 1 句：拆结构 + 翻译（10 分钟）\n完成标准：词汇书过完一轮，长难句不再发怵。", rr: [] },
+      { id: "c5-3", t: "专业课双线：大三课程 = 考研专业课一轮", m: 40, a: ["gpa"], weekly: true, d: "目的：华五推免线已关闭，但本校推免资格线仍在射程外沿。课程的意义有三件：把大三专业课当考研专业课一轮来学；不挂科保毕业；顺带保住“够到本校推免资格线”的微小可能。\n步骤：\n① 数电/模电等考研科目：上课紧跟，每周 40 分钟错题复盘\n② 笔记按考研专业课的考法整理（名解/简答/计算）\n③ 非考研科目：及格即可，时间让位给数学\n完成标准：零挂科；考研专业课相关课程期末 ≥85；排名若回升至学院推免资格线附近，9 月决策时多一张牌。", rr: [] },
+      { id: "c5-4", t: "大三上选课：微处理器设计与实践 + 模拟集成电路版图设计实验 + 创新技能训练", m: 30, a: ["research"], once: true, d: "目的：设计方向选修三件套——微处理器设计与实践与 CPU 项目互证；模集版图实验是 IC 面试谈资；创新技能训练对接集创赛/电赛。\n不选：通信原理（通信方向，与目标无关）。\n完成标准：三件套全部选上。" }
+    ],
+    milestones: [
+      "简易 CPU 在 FPGA 上跑通（取指/译码/执行）",
+      "集创赛往年题练手 1–2 道，备赛就绪",
+      "数学一高数+线代基础轮完成，英语词汇一轮过半",
+      "大三课程与考研专业课一轮同步推进，零挂科",
+      "数字集设/模集 ≥90，笔记可直接用于考研"
+    ],
+    resources: [
+      { name: "集创赛官网", url: "https://univ.ciciec.com", note: "每年 3 月报名" },
+      { name: "tinyriscv 开源核", url: "https://github.com/liangkangnan/tinyriscv", note: "CPU 项目对照" },
+      { name: "HDLBits 全题库", url: "https://hdlbits.01xz.net", note: "保持 RTL 手感" },
+      { name: "中国研究生招生信息网", url: "https://yz.chsi.com.cn", note: "当届目录先查起来" }
+    ]
+  },
+  {
+    id: "p6", name: "大三下+暑假 · 考研强化", range: "2028.03 – 08",
+    start: "2028-03-01", end: "2028-08-31",
+    note: "统考单线 · 考研强化 · IC 收尾",
+    tracks: {
+      ic: [
+        { id: "i6-1", t: "集创赛：正式报名 + 作品提交（3 月报名）", m: 90, a: ["fpga-tool", "verify"], weekly: true, d: "盯官网 3 月报名节点，把备赛课题做成可提交作品：先保功能完整，再谈优化；作品说明文档同步写好，这既是比赛也是复试素材。", rr: ["ciciec"] },
+        { id: "i6-2", t: "复试素材：把 CPU/项目写成“能讲 30 分钟”的深挖文档", m: 180, a: ["story"], once: true, d: "目的：复试面试官会顺着一个细节往下挖 5 层——文档就是你的“防挖穿”工程。\n步骤：\n① 每个核心项目写：架构图 → 关键取舍（为什么这么设计）→ 踩过的坑 → 改进方向\n② 自问 10 个“为什么”（时钟翻倍会怎样？这个状态机为什么用三段式？）\n③ 存 GitHub 并逐段排练讲稿\n完成标准：随便抽一个模块都能讲满 5 分钟不虚。", rr: ["github_home"] },
+        { id: "i6-3", t: "牛客《数字IC面试快速指南》+ Verilog 题库过一轮", m: 45, a: ["verify"], weekly: true, d: "目的：夏令营面试的问题套路与校招笔试高度重合，提前熟悉题型。\n步骤：\n① 每周 45 分钟，过面试指南的 Verilog/数电/STA 基础问答\n② 牛客 Verilog 题库同步刷，错题归类\n③ 顺带了解“验证/前端/后端”岗分别做什么，校准自己的定位（验证岗长期缺人，值得认真考虑）\n完成标准：阻塞非阻塞、跨时钟域、复位策略等常见问答能秒答。", rr: ["nowcoder_ic"] },
+        { id: "i6-4", t: "HDLBits 手感维持：每周 1 题", m: 20, a: ["vl-comb"], weekly: true, d: "每周 20 分钟 1 道题即可，工具和 RTL 不生疏就行，时间让位给考研强化。", rr: ["hdlbits"] }
+      ],
+      pcb: []
+    },
+    common: [
+      { id: "c6-1", t: "锁定目标：复旦当届初试科目 + 复试线 + 目标分数拆解", m: 60, a: ["research"], once: true, d: "目的：推免线已关闭，统考是唯一通道——把目标从“考上复旦”翻译成每科要考多少分。\n步骤：\n① 查复旦研招网/微院当届目录：初试科目、参考书、近 3 年复试线\n② 按复试线 +15 分定目标总分，拆到四科\n③ 据此校准每天的时间分配，弱科多分\n完成标准：一页纸目标拆解表（各科目标分 + 当前差距）。", rr: ["fudan_site", "yzchsi"] },
+      { id: "c6-2", t: "考研强化：数学一轮收尾 + 专业课一轮（按复旦目录）", m: 180, a: ["exam"], weekly: true, d: "目的：暑假是分数的分水岭，也是大三下课程与备考并行的唯一窗口。\n步骤：\n① 数学：概率论 + 一轮收尾，开始按章做真题分册\n② 专业课：按 c6-1 锁定的复旦当届目录（数电/模电等）过第一轮\n③ 每周日晚做一次周复盘，动态调整下周配比\n完成标准：9 月开学时数学一轮完毕、专业课一轮过半。", rr: ["yzchsi"] },
+      { id: "c6-3", t: "大三下选课：集成电路EDA工具与应用（必拿）+ 微加工链课程按 GPA 策略过", m: 30, a: ["research"], once: true, d: "目的：EDA 工具课（综合/布局布线/仿真流程）是数字 IC 求职+复试的双重素材，必选；其余选修能不选就不选，时间归考研强化。\n不选：显示科学与器件技术 / 电子与光电子器件可靠性分析 / 电磁场与电磁波 / DSP算法实验（仅当学分缺口才补选）。\n专必（微加工/工艺实验/表征/微纳器件）：以 GPA 策略过，笔记留作复试可能的器件问答储备。\n完成标准：选课锁定，确认考研强化时间表不受冲击。" }
+    ],
+    milestones: [
+      "集创赛作品提交完成",
+      "EDA 工具课已选，考研强化时间表无冲击",
+      "CPU/项目深挖文档完成，可脱稿讲解",
+      "目标分数拆解表完成（各科差距明确）",
+      "数学一轮 + 专业课一轮按期完成"
+    ],
+    resources: [
+      { name: "复旦大学官网（搜：微电子学院 招生）", url: "https://www.fudan.edu.cn", note: "当届目录与复试线" },
+      { name: "中国研究生招生信息网", url: "https://yz.chsi.com.cn", note: "当届目录/报名" },
+      { name: "牛客网 · 数字IC面试专区", url: "https://www.nowcoder.com", note: "面试问答套路" },
+      { name: "集创赛官网", url: "https://univ.ciciec.com", note: "3 月报名节点" }
+    ]
+  },
+  {
+    id: "p7", name: "大四上 · 初试冲刺", range: "2028.09 – 12",
+    start: "2028-09-01", end: "2028-12-31",
+    note: "全力初试 · 12 月底开考",
+    tracks: {
+      ic: [
+        { id: "i7-1", t: "复试素材保温：每周 15 分钟项目讲稿口述", m: 15, a: ["story"], weekly: true, d: "初试期间不碰新项目，只做保温：每周 15 分钟对着空气/研友讲一段项目深挖稿，保持复试表达不生疏即可。", rr: [] }
+      ],
+      pcb: []
+    },
+    common: [
+      { id: "c7-1", t: "初试全科冲刺：政治 + 英语 + 数学 + 专业课", m: 300, a: ["exam"], daily: true, d: "目的：初试总分决定一切，本阶段其他任务全部让位。\n步骤：\n① 三轮滚动：上午数学/专业课，下午英语/政治，晚上复盘 + 错题\n② 11 月起进入真题套卷节奏，严格按考试时间掐表\n③ 每周留半天机动，补最弱的一科\n完成标准：12 月底走进考场时，各科都过完至少两轮真题。", rr: ["yzchsi"] },
+      { id: "c7-2", t: "真题周测 + 错题归因", m: 120, a: ["exam"], weekly: true, d: "每周一套真题（数学/专业课轮换），严格计时；错题按“概念/计算/思路”归因，并回教材定位漏洞所在章节。", rr: [] },
+      { id: "c7-3", t: "研招网节点：9 月预报名 / 10 月正式报名 / 11 月确认", m: 30, a: ["research"], once: true, d: "盯紧研招网节点：9 月预报名、10 月正式报名（目标：复旦微院数字 IC 方向）、11 月网上确认。设好日历提醒，错过即出局。", rr: ["yzchsi"] },
+      { id: "c7-4", t: "9 月推免决策：本校预推免对冲（资格公示后）", m: 60, a: ["research"], once: true, d: "目的：兑现或关闭退路——本校（中大微院）预推免，成本控制在 1–2 天。\n步骤：\n① 9 月初查学院推免资格名单：够线 → 报本校预推免（成绩单/排名证明/个人陈述 1 天备齐，复用作品集）\n② 参加预推免复试\n③ 9 月底推免系统确认截止前做最终抉择：接受本校待录取 = 放弃 12 月统考（两者互斥）；放弃待录取 = 全力初试冲复旦\n④ 无论选哪边，10 月起只执行唯一主线\n完成标准：选定唯一主线；若选统考，退路正式关闭。", rr: ["sysu_site", "yzchsi"] },
+      { id: "c7-5", t: "大四上收口：微机原理用实战降维；选修只留集成电路测试技术", m: 30, a: ["gpa"], once: true, d: "目的：初试年课程最小化。\n步骤：\n① 微机原理与嵌入式系统（专必）：两年 STM32 实践直接覆盖，作业实验快速拿满，时间还给真题\n② 选修：只选集成电路测试技术（IC 谈资且负担小）；传感器/光电/光通信/工程设计与实践一律不选\n③ 所有课程以“不挂科+速通”为标准\n完成标准：选课清单锁定，周课表确认初试时间完整。" }
+    ],
+    milestones: [
+      "初试完成（12 月底）",
+      "9 月推免决策完成，唯一主线确认",
+      "课程速通不挂科，初试时间完整",
+      "报名/确认节点零失误",
+      "各科真题 ≥2 轮"
+    ],
+    resources: [
+      { name: "中国研究生招生信息网", url: "https://yz.chsi.com.cn", note: "报名/成绩/调剂" },
+      { name: "复旦大学官网（搜：微电子学院 招生）", url: "https://www.fudan.edu.cn", note: "复试线与目录" },
+      { name: "中山大学官网", url: "https://www.sysu.edu.cn", note: "推免资格/预推免通知" }
+    ]
+  },
+  {
+    id: "p8", name: "大四下 · 复试+毕设", range: "2029.01 – 06",
+    start: "2029-01-01", end: "2029-06-30",
+    note: "出分复试 · 毕设贴数字IC",
+    tracks: {
+      ic: [
+        { id: "i8-1", t: "作品集终稿：CPU/项目仓库 README + 波形图整理", m: 90, a: ["story"], once: true, d: "复试老师真的会点开你给的链接。把仓库 README 补全：架构图、仿真波形截图、复现步骤、踩坑记录；半成品删掉或标注清楚状态。", rr: ["github_home", "tinyriscv"] }
+      ],
+      pcb: []
+    },
+    common: [
+      { id: "c8-1", t: "出分后双线决策：复试准备 / 调剂预案", m: 60, a: ["research"], once: true, d: "2 月底出分：过线 → 全力复旦复试；擦线 → 复试与调剂信息双线并行；不过 → 评估二战或就业（IC 行业本科岗 + 一份扎实作品集同样有出路）。先定策略再投入。", rr: ["yzchsi"] },
+      { id: "c8-2", t: "复试演练：项目深挖问答 + 英语口语 + 专业口试", m: 60, a: ["story", "exam"], weekly: true, d: "每周一次全真演练：找同学/研友当考官，按“自我介绍 → 项目深挖 → 英语问答 → 专业口试”走完整流程并录音复盘。重点练被打断、被追问时的稳定输出。", rr: ["nowcoder_ic"] },
+      { id: "c8-3", t: "毕设选题贴近数字 IC / FPGA 方向", m: 40, a: ["research"], once: true, d: "毕设是复试“科研潜力”的现成证据。选题时主动找数字方向导师：CPU/加速器/FPGA 验证类题目优先，和已有项目形成组合拳。", rr: [] }
+    ],
+    milestones: [
+      "复试完成并拿到拟录取（或落地调剂/就业方案）",
+      "作品集仓库对外可看",
+      "毕设开题通过"
+    ],
+    resources: [
+      { name: "中国研究生招生信息网", url: "https://yz.chsi.com.cn", note: "复试/调剂信息" },
+      { name: "复旦大学官网（搜：微电子学院 招生）", url: "https://www.fudan.edu.cn", note: "复试名单与通知" },
+      { name: "GitHub 个人仓库", url: "https://github.com", note: "作品集终稿" },
+      { name: "牛客网 · 数字IC面试专区", url: "https://www.nowcoder.com", note: "复试问答演练" }
+    ]
+  }
+];
+
+/* ================= 状态 ================= */
+const LS_KEY = "dw_workbench_v1";
+const state = { phaseOverride: null, done: {} };
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      state.phaseOverride = s.phaseOverride || null;
+      state.done = s.done || {};
+    }
+  } catch (e) { /* 损坏则重置 */ }
+  PHASES.forEach(p => p.tracks.ic.concat(p.tracks.pcb).concat(p.common).forEach(t => {
+    if (t.done && state.done[p.id + "/" + t.id] === undefined) state.done[p.id + "/" + t.id] = true;
+  }));
+}
+function saveState() {
+  localStorage.setItem(LS_KEY, JSON.stringify({ phaseOverride: state.phaseOverride, done: state.done }));
+}
+function isDone(p, t) { return !!state.done[p.id + "/" + t.id]; }
+function setDone(p, t, v) { state.done[p.id + "/" + t.id] = v; saveState(); }
+
+/* ================= 工具 ================= */
+const fmt = n => n >= 60 ? Math.floor(n/60) + "h" + (n%60 ? String(n%60).padStart(2,"0") + "m" : "") : n + "m";
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const todayStr = () => new Date().toISOString().slice(0,10);
+
+function currentPhase() {
+  if (state.phaseOverride) { const p = PHASES.find(x => x.id === state.phaseOverride); if (p) return p; }
+  const t = todayStr();
+  const found = PHASES.find(p => t >= p.start && t <= p.end);
+  return found || PHASES[PHASES.length - 1];
+}
+function allTasks(p) { return p.tracks.ic.concat(p.tracks.pcb).concat(p.common); }
+function phaseDone(p) { return allTasks(p).filter(t => isDone(p,t)).length; }
+function phaseTotal(p) { return allTasks(p).length; }
+function phasePct(p) { const n = phaseTotal(p); return n ? Math.round(phaseDone(p)/n*100) : 0; }
+function trackDone(p, tr) { return p.tracks[tr].filter(t => isDone(p,t)).length; }
+function trackTotal(p, tr) { return p.tracks[tr].length; }
+
+/* ================= 渲染 ================= */
+const $ = id => document.getElementById(id);
+const CHECK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.7 9.5 3.5"/></svg>';
+
+function tagChip(t, base) {
+  return (t.a || []).map(a => `<span class="tag ${base}">${esc(ABILITIES[a].name)}</span>`).join("");
+}
+
+const CHEV = '<svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg>';
+
+function collapseHtml(t) {
+  const res = (t.rr || []).map(k => RES[k]).filter(Boolean)
+    .map(r => `<li>${r.u
+      ? `<a href="${r.u}" target="_blank" rel="noopener">${esc(r.n)}</a>`
+      : `<strong class="rt">${esc(r.n)}</strong>`}${r.k ? `<span class="rk">${esc(r.k)}</span>` : ""}</li>`).join("");
+  if (!t.d && !res) return "";
+  return `<details class="t-more"><summary>${CHEV}说明与资源</summary><div class="more-body">${t.d ? `<p class="md">${esc(t.d)}</p>` : ""}${res ? `<ul class="ml">${res}</ul>` : ""}</div></details>`;
+}
+
+function taskRow(p, t, track) {
+  const key = p.id + "/" + t.id, d = isDone(p, t);
+  const base = track === "pcb" ? "pcb" : "ic";
+  const mins = t.m ? `<div class="tm">${t.m}m</div>` : "";
+  return `<div class="task" data-track="${track}">
+    <label class="ck"><input type="checkbox" data-key="${key}" ${d ? "checked" : ""}><span class="box">${CHECK}</span></label>
+    <div class="t-body"><div class="tt ${d ? "on" : ""}">${esc(t.t)}</div>${mins}<div class="tags">${tagChip(t, base)}</div>${collapseHtml(t)}</div>
+  </div>`;
+}
+
+function renderToday(p) {
+  const daily = allTasks(p).filter(t => t.daily);
+  const sprint = allTasks(p).filter(t => t.once && !isDone(p, t));
+  const itemHtml = t => {
+    const base = t.a && t.a[0] && ABILITIES[t.a[0]].group === "pcb" ? "pcb" : "ic";
+    const d = isDone(p, t);
+    const when = t.daily ? "每日" : "一次性";
+    return `<div class="t-item"><label class="ck"><input type="checkbox" data-key="${p.id}/${t.id}" ${d ? "checked" : ""}><span class="box">${CHECK}</span></label>
+      <div class="t-body"><div class="tt ${d ? "on" : ""}">${esc(t.t)}</div><div class="tm">${when} · ${t.m ? t.m + "m" : ""}</div>
+      <div class="tags">${tagChip(t, base)}</div>${collapseHtml(t)}</div></div>`;
+  };
+  let html = "";
+  if (daily.length) html += `<div class="t-grp"><div class="g-t">每日节奏</div>${daily.map(itemHtml).join("")}</div>`;
+  if (sprint.length) html += `<div class="t-grp"><div class="g-t">冲刺项 · 本阶段清掉</div>${sprint.map(itemHtml).join("")}</div>`;
+  $("todayList").innerHTML = html || `<div class="empty">当前阶段没有按日排布的任务，直接在下方双轨面板里打卡。</div>`;
+  const leftDaily = daily.filter(t => !isDone(p, t));
+  const mins = leftDaily.reduce((s, t) => s + (t.m || 0), 0);
+  $("todaySum").textContent = mins ? `每日 ${leftDaily.length} 项 · 约 ${fmt(mins)}` + (sprint.length ? ` · 冲刺 ${sprint.length}` : "") : "每日任务全清 ✓";
+  $("todayPhase").textContent = p.name + " · " + p.note;
+}
+
+function renderTrack(p, track, el, bar, prog, countWrap) {
+  const html = p.tracks[track].map(t => taskRow(p, t, track)).join("") ||
+    `<div class="empty">本阶段此轨无任务。</div>`;
+  $(el).innerHTML = html;
+  const n = trackTotal(p, track), d = trackDone(p, track);
+  $(bar).style.transform = n ? `scaleX(${d/n})` : "scaleX(0)";
+  $(prog).textContent = n ? `${d}/${n} · ${Math.round(d/n*100)}%` : "—";
+}
+
+function renderCommon(p) {
+  $("commonSub").textContent = p.name + " · 考研与课内事务";
+  $("commonList").innerHTML = p.common.map(t => {
+    const d = isDone(p, t);
+    return `<div class="task" data-track="ic">
+      <label class="ck"><input type="checkbox" data-key="${p.id}/${t.id}" ${d ? "checked" : ""}><span class="box">${CHECK}</span></label>
+      <div class="t-body"><div class="tt ${d ? "on" : ""}">${esc(t.t)}</div><div class="tags">${tagChip(t, "ic")}</div>${collapseHtml(t)}</div>
+    </div>`;
+  }).join("") || `<div class="empty">本阶段无额外事务，主线见上方课内路线与今日任务。</div>`;
+}
+
+function renderCourseMap() {
+  const cur = currentPhase().id;
+  $("cmStrip").innerHTML = COURSEPLAN.map(c => {
+    const on = c.phase === cur;
+    const rows = c.focus.map(f =>
+      `<div class="cm-row"><span class="cn">${esc(f[0])}</span><span class="cd">${esc(f[1])}</span></div>`).join("");
+    return `<button class="cm-card${on ? " cur" : ""}" data-phase="${c.phase}" type="button" aria-pressed="${on}">
+      <span class="cm-sem">${esc(c.sem)}${on ? " · 当前" : ""}</span>
+      <span class="cm-rg">${esc(c.range)}</span>
+      ${rows}
+      <div class="cm-line"><i class="lb lb-pick">选课</i><span>${esc(c.picks)}</span></div>
+      <div class="cm-line"><i class="lb lb-exam">考研</i><span>${esc(c.exam)}</span></div>
+    </button>`;
+  }).join("");
+}
+
+function renderMilestones(p) {
+  $("msSub").textContent = p.name + " · 达标即算该阶段完成";
+  $("msList").innerHTML = p.milestones.map((m, i) => {
+    const key = "ms:" + p.id + ":" + i, d = isDone(p, {id: "ms" + i});
+    const ck = !!state.done[key];
+    return `<div class="ms-item">
+      <label class="ck"><input type="checkbox" data-key="${key}" ${ck ? "checked" : ""}><span class="box">${CHECK}</span></label>
+      <div class="t-body"><div class="tt ${ck ? "on" : ""}">${esc(m)}</div><div class="n">验收标准 ${i+1} · ${p.id.toUpperCase()}</div></div>
+    </div>`;
+  }).join("");
+}
+
+function renderResources(p) {
+  $("resSub").textContent = p.name;
+  $("resList").innerHTML = p.resources.map(r =>
+    `<div class="res-item"><a href="${r.url}" target="_blank" rel="noopener"><span class="rn">${esc(r.name)}</span></a><span class="ru">${esc(r.note)}</span></div>`
+  ).join("");
+}
+
+function renderAbilities() {
+  const rows = Object.entries(ABILITIES).map(([id, ab]) => {
+    let total = 0, done = 0;
+    PHASES.forEach(p => allTasks(p).forEach(t => {
+      if ((t.a || []).includes(id)) { total++; if (isDone(p, t)) done++; }
+    }));
+    const pct = total ? Math.round(done/total*100) : 0;
+    return { ...ab, id, total, done, pct };
+  });
+  const order = { ic: 0, pcb: 1, common: 2 };
+  rows.sort((x, y) => order[x.group] - order[y.group] || y.pct - x.pct);
+  const labels = { ic: "IC 轨能力", pcb: "PCB 轨能力", common: "通用能力" };
+  let last = "";
+  $("abList").innerHTML = rows.map(r => {
+    let head = "";
+    if (r.group !== last) { last = r.group; head = `<div class="abil-group ${r.group}">${labels[r.group]}</div>`; }
+    const bar = r.done
+      ? `<div class="abar"><i style="transform:scaleX(${r.pct/100})"></i></div>`
+      : "";
+    return head + `<div class="ab ${r.group} ${r.done ? "" : "zero"}"><div class="an">${esc(r.name)}</div>
+      <div class="ap">${r.done}/${r.total} · ${r.pct}%</div>${bar}</div>`;
+  }).join("");
+}
+
+function renderTimeline() {
+  const cur = currentPhase();
+  $("timeline").innerHTML = PHASES.map(p => {
+    const pct = phasePct(p), on = p.id === cur.id;
+    return `<button class="chip ${on ? "cur" : ""}" data-phase="${p.id}" role="tab" aria-selected="${on}">
+      <span class="nm">${esc(p.name)}</span><span class="rg">${esc(p.range)}</span>
+      <span class="pb"><i data-bar="${p.id}"></i></span>
+      <span class="pctl"><span>${on ? "当前" : "阶段进度"}</span><b>${pct}%</b></span>
+    </button>`;
+  }).join("");
+  PHASES.forEach(p => {
+    const el = document.querySelector(`[data-bar="${p.id}"]`);
+    if (el) el.style.width = phasePct(p) + "%";
+  });
+}
+
+function renderTotals() {
+  let total = 0, done = 0;
+  PHASES.forEach(p => { total += phaseTotal(p); done += phaseDone(p); });
+  const pct = total ? Math.round(done/total*100) : 0;
+  $("totalPct").textContent = pct + "%";
+  $("totalLbl").textContent = `${done}/${total} 任务`;
+  const ring = $("totalRing"), c = 100.5;
+  ring.style.transition = "stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)";
+  requestAnimationFrame(() => requestAnimationFrame(() => { ring.style.strokeDashoffset = c - c * pct/100; }));
+}
+
+function render() {
+  const p = currentPhase();
+  $("todayDate").textContent = todayStr();
+  renderTimeline();
+  renderCourseMap();
+  renderToday(p);
+  renderTrack(p, "ic", "icList", "icBar", "icProg");
+  renderTrack(p, "pcb", "pcbList", "pcbBar", "pcbProg");
+  renderCommon(p);
+  renderMilestones(p);
+  renderResources(p);
+  renderAbilities();
+  renderTotals();
+  document.title = `双轨工作台 · ${p.name}`;
+}
+
+/* ================= 交互 ================= */
+document.addEventListener("change", e => {
+  const cb = e.target.closest("input[type=checkbox][data-key]");
+  if (!cb) return;
+  const key = cb.dataset.key;
+  const [pid, tid] = key.split("/");
+  if (key.startsWith("ms:")) {
+    state.done[key] = cb.checked;
+    saveState();
+  } else {
+    const p = PHASES.find(x => x.id === pid);
+    const t = allTasks(p).find(x => x.id === tid);
+    if (t) setDone(p, t, cb.checked);
+  }
+  render();
+});
+
+document.addEventListener("click", e => {
+  const chip = e.target.closest(".chip[data-phase], .cm-card[data-phase]");
+  if (!chip) return;
+  state.phaseOverride = chip.dataset.phase;
+  saveState();
+  render();
+});
+
+$("btnReset").addEventListener("click", () => {
+  if (confirm("确认清空全部打卡进度？此操作不可撤销。")) {
+    state.phaseOverride = null; state.done = {};
+    localStorage.removeItem(LS_KEY);
+    render();
+  }
+});
+
+/* ================= 跨设备同步（进度码） ================= */
+$("btnExport").addEventListener("click", () => {
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify({ v: 1, phaseOverride: state.phaseOverride, done: state.done }))));
+  const ta = document.createElement("textarea");
+  ta.value = code; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (err) {}
+  ta.remove();
+  prompt(ok ? "进度码已复制，到另一台设备点「导入进度码」粘贴即可：" : "请手动全选复制下方进度码：", code);
+});
+$("btnImport").addEventListener("click", () => {
+  const code = prompt("粘贴另一台设备导出的进度码：");
+  if (!code) return;
+  try {
+    const s = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    if (!s || typeof s !== "object" || !s.done) throw new Error("bad");
+    state.phaseOverride = s.phaseOverride || null;
+    state.done = s.done;
+    saveState(); render();
+  } catch (err) { alert("进度码无效，请重新复制完整内容"); }
+});
+
+/* ================= 启动 ================= */
+loadState();
+render();
+</script>
+</body>
+</html>
